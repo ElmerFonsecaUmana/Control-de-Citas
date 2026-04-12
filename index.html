@@ -272,7 +272,7 @@
   }
 
   // Realtime listener
-  const q = query(collection(db, 'citas'), orderBy('fecha'), orderBy('hora'));
+  const q = query(collection(db, 'citas'), orderBy('fecha'));
   onSnapshot(q,
     snapshot => {
       citas = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
