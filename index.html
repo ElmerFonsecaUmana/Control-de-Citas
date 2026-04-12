@@ -116,6 +116,8 @@
   .cita-card.mama .cita-badge { background: var(--mama-light); color: var(--mama-color); }
   .btn-eliminar { background: none; border: none; cursor: pointer; padding: 6px; border-radius: 8px; color: #D1D5DB; font-size: 1.1rem; transition: color 0.15s; }
   .btn-eliminar:active { color: #EF4444; }
+  .btn-ics { background: none; border: none; cursor: pointer; padding: 6px; border-radius: 8px; font-size: 1.1rem; opacity: 0.6; transition: opacity 0.15s; }
+  .btn-ics:active { opacity: 1; }
 
   /* CALENDAR */
   .calendar-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
@@ -377,14 +379,51 @@
     }
   }
 
+  // ICS download
+  window.descargarICS = function(id) {
+    const c = citas.find(x => x.id === id);
+    if (!c) return;
+    const [y,m,d] = c.fecha.split('-');
+    const [hh,mm] = c.hora.split(':');
+    const pad = n => String(n).padStart(2,'0');
+    const dtStart = `${y}${pad(m)}${pad(d)}T${pad(hh)}${pad(mm)}00`;
+    const endHH = String((parseInt(hh) + 1) % 24).padStart(2,'0');
+    const dtEnd = `${y}${pad(m)}${pad(d)}T${endHH}${pad(mm)}00`;
+    const pacNombre = c.paciente === 'papa' ? 'Papa' : 'Mama';
+    const titulo = `${c.especialidad} - ${pacNombre}`;
+    const lines = [
+      'BEGIN:VCALENDAR',
+      'VERSION:2.0',
+      'PRODID:-//Citas Medicas//ES',
+      'BEGIN:VEVENT',
+      `DTSTART:${dtStart}`,
+      `DTEND:${dtEnd}`,
+      `SUMMARY:${titulo}`,
+      c.doctor ? `DESCRIPTION:${c.doctor}` : null,
+      'END:VEVENT',
+      'END:VCALENDAR'
+    ].filter(Boolean).join('\r\n');
+    const blob = new Blob([lines], { type: 'text/calendar' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href = url;
+    a.download = `cita.ics`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   // List
   function renderLista() {
     const el = document.getElementById('citas-list');
-    if (!citas.length) {
-      el.innerHTML = `<div class="empty-state"><div class="icon">📭</div><p>No hay citas registradas aún.<br>Agrega una desde "Nueva Cita".</p></div>`;
+    const todayStr = hoy.toISOString().split('T')[0];
+    const proximas = citas
+      .filter(c => c.fecha >= todayStr)
+      .sort((a,b) => (a.fecha+a.hora).localeCompare(b.fecha+b.hora));
+    if (!proximas.length) {
+      el.innerHTML = `<div class="empty-state"><div class="icon">📭</div><p>No hay citas próximas.<br>Agrega una desde "Nueva Cita".</p></div>`;
       return;
     }
-    el.innerHTML = citas.map(c => `
+    el.innerHTML = proximas.map(c => `
       <div class="cita-card ${c.paciente}">
         <div class="bar"></div>
         <div class="cita-info">
@@ -392,6 +431,7 @@
           <div class="especialidad">${c.especialidad}${c.doctor ? ` <span style="font-weight:400;color:var(--text-muted)">– ${c.doctor}</span>` : ''}</div>
         </div>
         <span class="cita-badge">${c.paciente==='papa'?'Papá':'Mamá'}</span>
+        <button class="btn-ics" onclick="descargarICS('${c.id}')" title="Agregar al calendario">📅</button>
         <button class="btn-eliminar" onclick="eliminarCita('${c.id}')">✕</button>
       </div>`).join('');
   }
