@@ -137,15 +137,20 @@
   .popup-bar.mama { background: var(--mama-color); }
   .popup-especialidad { font-family: 'Playfair Display', serif; font-size: 1.2rem; font-weight: 700; margin-bottom: 6px; }
   .popup-detalle { font-size: 0.88rem; color: var(--text-muted); margin-bottom: 4px; }
-  .popup-actions { display: flex; gap: 10px; margin-top: 20px; }
+  .popup-actions { display: flex; gap: 8px; margin-top: 20px; flex-wrap: wrap; }
   .popup-btn-ics {
     flex: 1; padding: 11px; border-radius: 10px; border: none;
     background: var(--text); color: #fff;
     font-family: 'DM Sans', sans-serif; font-size: 0.9rem; font-weight: 600;
     cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px;
   }
+  .popup-btn-edit {
+    flex: 1; padding: 11px; border-radius: 10px; border: 1.5px solid var(--border);
+    background: none; font-family: 'DM Sans', sans-serif; font-size: 0.9rem; font-weight: 600;
+    cursor: pointer; color: var(--text); display: flex; align-items: center; justify-content: center; gap: 6px;
+  }
   .popup-btn-close {
-    padding: 11px 16px; border-radius: 10px; border: 1.5px solid var(--border);
+    width: 100%; padding: 11px 16px; border-radius: 10px; border: 1.5px solid var(--border);
     background: none; font-family: 'DM Sans', sans-serif; font-size: 0.9rem;
     cursor: pointer; color: var(--text-muted);
   }
@@ -278,6 +283,7 @@
     <div class="popup-detalle" id="popup-doctor"></div>
     <div class="popup-actions">
       <button class="popup-btn-ics" id="popup-btn-ics">📅 Agregar al calendario</button>
+      <button class="popup-btn-edit" id="popup-btn-edit">✏️ Editar</button>
       <button class="popup-btn-close" onclick="cerrarPopup()">Cerrar</button>
     </div>
   </div>
@@ -289,7 +295,7 @@
   import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-app.js";
   import {
     getFirestore, collection, addDoc, deleteDoc,
-    doc, onSnapshot, query, orderBy
+    doc, onSnapshot, query, orderBy, updateDoc
   } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js";
 
   const firebaseConfig = {
@@ -306,6 +312,7 @@
 
   let citas = [];
   let pacienteSeleccionado = null;
+  let editandoId = null;
   let calMes, calAnio;
   const hoy = new Date();
   calMes  = hoy.getMonth();
@@ -350,7 +357,7 @@
     document.getElementById('btn-mama').className = 'paciente-btn' + (p==='mama' ? ' mama-active' : '');
   };
 
-  // Save appointment
+  // Save or update appointment
   window.guardarCita = async () => {
     const fecha = document.getElementById('inp-fecha').value;
     const hora  = document.getElementById('inp-hora').value;
@@ -365,14 +372,26 @@
     btn.disabled = true;
     setSyncState('syncing');
     try {
-      await addDoc(collection(db, 'citas'), { fecha, hora, especialidad: esp, doctor: docN, paciente: pacienteSeleccionado });
-      toast('✓ Cita guardada');
+      if (editandoId) {
+        // UPDATE existing
+        await updateDoc(doc(db, 'citas', editandoId), { fecha, hora, especialidad: esp, doctor: docN, paciente: pacienteSeleccionado });
+        toast('✓ Cita actualizada');
+        editandoId = null;
+      } else {
+        // CREATE new
+        await addDoc(collection(db, 'citas'), { fecha, hora, especialidad: esp, doctor: docN, paciente: pacienteSeleccionado });
+        toast('✓ Cita guardada');
+      }
+      // Reset form
       document.getElementById('inp-hora').value = '';
       document.getElementById('inp-especialidad').value = '';
       document.getElementById('inp-doctor').value = '';
+      document.getElementById('inp-fecha').value = hoy.toISOString().split('T')[0];
       pacienteSeleccionado = null;
       document.getElementById('btn-papa').className = 'paciente-btn';
       document.getElementById('btn-mama').className = 'paciente-btn';
+      document.querySelector('.form-panel h2').textContent = 'Agregar Cita';
+      document.getElementById('btn-guardar').textContent = 'Guardar Cita';
     } catch(e) {
       toast('Error al guardar. Revisa tu conexión.');
       setSyncState('error');
@@ -435,11 +454,29 @@
     document.getElementById('popup-fecha').textContent = '📅 ' + fmtF(c.fecha) + ' · ' + fmt12(c.hora);
     document.getElementById('popup-doctor').textContent = c.doctor ? '🩺 ' + c.doctor : '';
     document.getElementById('popup-btn-ics').onclick = () => { descargarICS(id); cerrarPopup(); };
+    document.getElementById('popup-btn-edit').onclick = () => { editarCita(id); };
     document.getElementById('popup-overlay').style.display = 'flex';
   };
   window.cerrarPopup = function(e) {
     if (e && e.target !== document.getElementById('popup-overlay')) return;
     document.getElementById('popup-overlay').style.display = 'none';
+  };
+
+  // Load cita into form for editing
+  window.editarCita = function(id) {
+    const c = citas.find(x => x.id === id);
+    if (!c) return;
+    cerrarPopup();
+    editandoId = id;
+    document.getElementById('inp-fecha').value = c.fecha;
+    document.getElementById('inp-hora').value  = c.hora;
+    document.getElementById('inp-especialidad').value = c.especialidad;
+    document.getElementById('inp-doctor').value = c.doctor || '';
+    selPaciente(c.paciente);
+    document.querySelector('.form-panel h2').textContent = '✏️ Editar Cita';
+    document.getElementById('btn-guardar').textContent = 'Guardar Cambios';
+    showTab('agregar');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   // ICS download
